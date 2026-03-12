@@ -24,6 +24,7 @@ import * as nodeCrypto from 'node:crypto'
 import * as path from 'node:path'
 import * as http from 'node:http'
 import * as v8 from 'v8'
+import { promises as nodeFs } from 'node:fs'
 import { SuiteFunction, TestFunction } from 'mocha'
 
 const addOnly = <T>(fn: Function): T => {
@@ -120,16 +121,14 @@ export async function startRemoteControlApp() {
 }
 
 export async function getFiles(directoryPath: string, { filter = null }: any = {}) {
+  const allFiles = await nodeFs.readdir(directoryPath)
   const files: string[] = []
-  const walker = require('walkdir').walk(directoryPath, {
-    no_recurse: true,
-  })
-  walker.on('file', (file: string) => {
-    if (!filter || filter(file)) {
-      files.push(file)
+  for (const file of allFiles) {
+    const fullPath = path.join(directoryPath, file)
+    if (!filter || filter(fullPath)) {
+      files.push(fullPath)
     }
-  })
-  await new Promise((resolve) => walker.on('end', resolve))
+  }
   return files
 }
 

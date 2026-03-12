@@ -322,6 +322,21 @@ export const injectExtensionAPIs = () => {
         },
       },
 
+      debugger: {
+        shouldInject: () => !!(manifest.permissions as string[] | undefined)?.includes('debugger'),
+        factory: (base) => {
+          return {
+            ...base,
+            attach: invokeExtension('debugger.attach'),
+            detach: invokeExtension('debugger.detach'),
+            getTargets: invokeExtension('debugger.getTargets'),
+            sendCommand: invokeExtension('debugger.sendCommand'),
+            onDetach: new ExtensionEvent('debugger.onDetach'),
+            onEvent: new ExtensionEvent('debugger.onEvent'),
+          }
+        },
+      },
+
       contextMenus: {
         factory: (base) => {
           let menuCounter = 0

@@ -445,7 +445,7 @@ export class ExtensionRouter {
       } else {
         if (listener.host.isDestroyed()) {
           console.error(`Unable to send '${eventName}' to extension host for ${extensionId}`)
-          return
+          continue
         }
         listener.host.send(ipcName, ...args)
       }
