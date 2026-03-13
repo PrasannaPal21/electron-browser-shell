@@ -125,12 +125,10 @@ export class DebuggerAPI {
   }
 
   private getTargets = (_event: ExtensionEvent): chrome.debugger.TargetInfo[] => {
-    const seen = new Set<number>()
     const results: chrome.debugger.TargetInfo[] = []
 
     for (const tab of this.ctx.store.tabs) {
       if (tab.isDestroyed()) continue
-      seen.add(tab.id)
       results.push({
         type: 'page' as const,
         id: String(tab.id),

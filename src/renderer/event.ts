@@ -7,9 +7,18 @@ const listenerMap = new Map<string, number>()
 /**
  * Maps the original user callback to the anonymous IPC wrapper registered with
  * ipcRenderer so that removeExtensionListener can find and remove the right
- * function reference.
+ * function reference, scoped per-event name.
  */
-const callbackWrapperMap = new WeakMap<object, (...args: any[]) => void>()
+const callbackWrapperMap = new Map<string, WeakMap<object, (...args: any[]) => void>>()
+
+const getCallbackMapForName = (name: string) => {
+  let map = callbackWrapperMap.get(name)
+  if (!map) {
+    map = new WeakMap<object, (...args: any[]) => void>()
+    callbackWrapperMap.set(name, map)
+  }
+  return map
+}
 
 export const addExtensionListener = (extensionId: string, name: string, callback: Function) => {
   const listenerCount = listenerMap.get(name) || 0
@@ -28,7 +37,8 @@ export const addExtensionListener = (extensionId: string, name: string, callback
     callback(...args)
   }
 
-  callbackWrapperMap.set(callback as object, wrapper)
+  const callbackMap = getCallbackMapForName(name)
+  callbackMap.set(callback as object, wrapper)
   ipcRenderer.addListener(formatIpcName(name), wrapper)
 }
 
@@ -46,10 +56,11 @@ export const removeExtensionListener = (extensionId: string, name: string, callb
   }
 
   // Use the stored wrapper so we remove the right function reference from ipcRenderer.
-  const wrapper = callbackWrapperMap.get(callback)
+  const callbackMap = callbackWrapperMap.get(name)
+  const wrapper = callbackMap && callbackMap.get(callback)
   if (wrapper) {
     ipcRenderer.removeListener(formatIpcName(name), wrapper)
-    callbackWrapperMap.delete(callback)
+    callbackMap!.delete(callback)
   } else {
     ipcRenderer.removeListener(formatIpcName(name), callback)
   }

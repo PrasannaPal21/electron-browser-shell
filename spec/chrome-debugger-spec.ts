@@ -1,5 +1,4 @@
 import { expect } from 'chai'
-import { emittedOnce } from './events-helpers'
 import { useExtensionBrowser, useServer } from './hooks'
 
 describe('chrome.debugger', () => {

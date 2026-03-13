@@ -123,12 +123,16 @@ export const injectExtensionAPIs = () => {
     }
 
     class ExtensionEvent<T extends Function> implements chrome.events.Event<T> {
+      private listeners = new Set<T>()
+
       constructor(private name: string) {}
 
       addListener(callback: T) {
+        this.listeners.add(callback)
         electron.addExtensionListener(extensionId, this.name, callback)
       }
       removeListener(callback: T) {
+        this.listeners.delete(callback)
         electron.removeExtensionListener(extensionId, this.name, callback)
       }
 
@@ -138,7 +142,7 @@ export const injectExtensionAPIs = () => {
         throw new Error('Method not implemented.')
       }
       hasListener(callback: T): boolean {
-        throw new Error('Method not implemented.')
+        return this.listeners.has(callback)
       }
       removeRules(ruleIdentifiers?: string[] | undefined, callback?: (() => void) | undefined): void
       removeRules(callback?: (() => void) | undefined): void
@@ -152,7 +156,7 @@ export const injectExtensionAPIs = () => {
         throw new Error('Method not implemented.')
       }
       hasListeners(): boolean {
-        throw new Error('Method not implemented.')
+        return this.listeners.size > 0
       }
     }
 
@@ -563,6 +567,7 @@ export const injectExtensionAPIs = () => {
             // TODO: provide a backend for browsers to opt-in to
             managed: local,
             sync: {
+              ...(base as any)?.sync ?? local,
               get: invokeExtension('storage.sync.get'),
               set: invokeExtension('storage.sync.set'),
               remove: invokeExtension('storage.sync.remove'),

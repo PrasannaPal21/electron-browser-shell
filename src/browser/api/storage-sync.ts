@@ -10,7 +10,7 @@ export class StorageSyncAPI {
 
   constructor(private ctx: ExtensionContext) {
     this.baseDir = path.join(app.getPath('userData'), 'extension-sync')
-    this.ready = fs.mkdir(this.baseDir, { recursive: true })
+    this.ready = fs.mkdir(this.baseDir, { recursive: true, mode: 0o700 })
 
     const handle = this.ctx.router.apiHandler()
     handle('storage.sync.get', this.get, { permission: 'storage' })
@@ -32,7 +32,12 @@ export class StorageSyncAPI {
         ? safeStorage.decryptString(buffer)
         : buffer.toString('utf-8')
       return JSON.parse(json)
-    } catch {
+    } catch (err: any) {
+      if (err && err.code === 'ENOENT') {
+        return {}
+      }
+
+      console.error('Failed to load storage sync data', err)
       return {}
     }
   }
@@ -43,7 +48,7 @@ export class StorageSyncAPI {
     const content = safeStorage.isEncryptionAvailable()
       ? safeStorage.encryptString(json)
       : json
-    await fs.writeFile(this.getFilePath(extensionId), content)
+    await fs.writeFile(this.getFilePath(extensionId), content, { mode: 0o600 })
   }
 
   private get = async ({ extension }: ExtensionEvent, keys?: string | string[] | Record<string, any> | null) => {
