@@ -128,6 +128,7 @@ export const injectExtensionAPIs = () => {
       constructor(private name: string) {}
 
       addListener(callback: T) {
+        if (this.listeners.has(callback)) return
         this.listeners.add(callback)
         electron.addExtensionListener(extensionId, this.name, callback)
       }
@@ -558,8 +559,10 @@ export const injectExtensionAPIs = () => {
           const hasListener = (cb: any) => {
             return customOnChanged.hasListener(cb) || (base?.onChanged?.hasListener?.(cb) ?? false)
           }
+          const hasListeners = () =>
+            customOnChanged.hasListeners() || (base?.onChanged?.hasListeners?.() ?? false)
 
-          const onChanged = { addListener, removeListener, hasListener }
+          const onChanged = { addListener, removeListener, hasListener, hasListeners }
 
           return {
             ...base,

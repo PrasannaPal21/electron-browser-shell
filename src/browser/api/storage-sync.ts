@@ -26,18 +26,28 @@ export class StorageSyncAPI {
 
   private load = async (extensionId: string): Promise<Record<string, any>> => {
     await this.ready
+    let buffer: Buffer
     try {
-      const buffer = await fs.readFile(this.getFilePath(extensionId))
-      const json = safeStorage.isEncryptionAvailable()
-        ? safeStorage.decryptString(buffer)
-        : buffer.toString('utf-8')
+      buffer = await fs.readFile(this.getFilePath(extensionId))
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') return {}
+      console.error('Failed to load storage sync data', err)
+      return {}
+    }
+    let json: string
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          json = safeStorage.decryptString(buffer)
+        } catch {
+          json = buffer.toString('utf-8')
+        }
+      } else {
+        json = buffer.toString('utf-8')
+      }
       return JSON.parse(json)
     } catch (err: any) {
-      if (err && err.code === 'ENOENT') {
-        return {}
-      }
-
-      console.error('Failed to load storage sync data', err)
+      console.error('Failed to parse storage sync data', err)
       return {}
     }
   }
@@ -75,7 +85,10 @@ export class StorageSyncAPI {
     const changes: Record<string, chrome.storage.StorageChange> = {}
 
     Object.entries(items).forEach(([k, v]) => {
-      if (data[k] !== v) {
+      const same = typeof v === 'object' && v !== null
+        ? JSON.stringify(data[k]) === JSON.stringify(v)
+        : data[k] === v
+      if (!same) {
         changes[k] = { newValue: v }
         if (k in data) changes[k].oldValue = data[k]
         data[k] = v

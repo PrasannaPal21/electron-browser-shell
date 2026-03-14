@@ -21,6 +21,9 @@ const getCallbackMapForName = (name: string) => {
 }
 
 export const addExtensionListener = (extensionId: string, name: string, callback: Function) => {
+  const callbackMap = getCallbackMapForName(name)
+  if (callbackMap.has(callback as object)) return
+
   const listenerCount = listenerMap.get(name) || 0
 
   if (listenerCount === 0) {
@@ -36,8 +39,6 @@ export const addExtensionListener = (extensionId: string, name: string, callback
     }
     callback(...args)
   }
-
-  const callbackMap = getCallbackMapForName(name)
   callbackMap.set(callback as object, wrapper)
   ipcRenderer.addListener(formatIpcName(name), wrapper)
 }

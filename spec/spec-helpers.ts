@@ -121,10 +121,16 @@ export async function startRemoteControlApp() {
 }
 
 export async function getFiles(directoryPath: string, { filter = null }: any = {}) {
-  const allFiles = await nodeFs.readdir(directoryPath)
+  const entries = await nodeFs.readdir(directoryPath)
   const files: string[] = []
-  for (const file of allFiles) {
-    const fullPath = path.join(directoryPath, file)
+  for (const entry of entries) {
+    const fullPath = path.join(directoryPath, entry)
+    try {
+      const stat = await nodeFs.stat(fullPath)
+      if (!stat.isFile()) continue
+    } catch {
+      continue
+    }
     if (!filter || filter(fullPath)) {
       files.push(fullPath)
     }
