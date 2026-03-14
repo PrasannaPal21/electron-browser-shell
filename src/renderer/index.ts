@@ -446,6 +446,23 @@ export const injectExtensionAPIs = () => {
         },
       },
 
+      identity: {
+        shouldInject: () => !!(manifest.permissions as string[] | undefined)?.includes('identity'),
+        factory: (base) => {
+          const redirectDomain = 'chromiumapp.org'
+          const redirectBase = extensionId
+            ? `https://${extensionId}.${redirectDomain}/`
+            : ''
+          return {
+            ...base,
+            getRedirectURL: (path?: string) =>
+              path ? redirectBase + path.replace(/^\//, '') : redirectBase,
+            launchWebAuthFlow: invokeExtension('identity.launchWebAuthFlow'),
+            getAuthToken: invokeExtension('identity.getAuthToken'),
+          }
+        },
+      },
+
       i18n: {
         shouldInject: () => manifest.manifest_version === 3,
         factory: (base) => {
@@ -536,6 +553,9 @@ export const injectExtensionAPIs = () => {
             },
             openOptionsPage: invokeExtension('runtime.openOptionsPage'),
             sendNativeMessage: invokeExtension('runtime.sendNativeMessage'),
+            /** Forward extension logs to the main process console. */
+            logToMain: (...args: unknown[]) =>
+              electron.invokeExtension(extensionId, 'runtime.logToMain', {}, ...args),
           }
         },
       },
