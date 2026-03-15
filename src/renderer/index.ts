@@ -376,7 +376,7 @@ export const injectExtensionAPIs = () => {
               menuCreate(createProperties, callback)
               return createProperties.id
             },
-            update: invokeExtension('contextMenus.update', { noop: true }),
+            update: invokeExtension('contextMenus.update'),
             remove: invokeExtension('contextMenus.remove'),
             removeAll: invokeExtension('contextMenus.removeAll'),
             onClicked: new ExtensionEvent<
