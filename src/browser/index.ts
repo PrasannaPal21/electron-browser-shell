@@ -15,6 +15,7 @@ import { IdentityAPI } from './api/identity'
 import { ContextMenusAPI } from './api/context-menus'
 import { ManagementAPI } from './api/management'
 import { RuntimeAPI } from './api/runtime'
+import { WebRequestAPI } from './api/web-request'
 import { CookiesAPI } from './api/cookies'
 import { NotificationsAPI } from './api/notifications'
 import { ChromeExtensionImpl } from './impl'
@@ -128,6 +129,7 @@ export class ElectronChromeExtensions extends EventEmitter {
     browserAction: BrowserActionAPI
     contextMenus: ContextMenusAPI
     management: ManagementAPI
+    webRequest: WebRequestAPI
     commands: CommandsAPI
     cookies: CookiesAPI
     debugger: DebuggerAPI
@@ -169,6 +171,7 @@ export class ElectronChromeExtensions extends EventEmitter {
       browserAction: new BrowserActionAPI(this.ctx),
       contextMenus: new ContextMenusAPI(this.ctx),
       management: new ManagementAPI(this.ctx),
+      webRequest: new WebRequestAPI(this.ctx),
       commands: new CommandsAPI(this.ctx),
       cookies: new CookiesAPI(this.ctx),
       debugger: new DebuggerAPI(this.ctx),
@@ -273,6 +276,15 @@ export class ElectronChromeExtensions extends EventEmitter {
   getContextMenuItems(webContents: Electron.WebContents, params: Electron.ContextMenuParams) {
     this.checkWebContentsArgument(webContents)
     return this.api.contextMenus.buildMenuItemsForParams(webContents, params)
+  }
+
+  /**
+   * Notify extension listeners of a request (webRequest.onBeforeRequest).
+   * Call from the app's session.webRequest.onBeforeRequest handler after
+   * skipping file:// and chrome-extension:// URLs. Callback is invoked by the app exactly once.
+   */
+  notifyWebRequestOnBeforeRequest(details: Electron.OnBeforeRequestListenerDetails) {
+    this.api.webRequest.notifyOnBeforeRequest(details)
   }
 
   /**

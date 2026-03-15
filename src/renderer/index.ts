@@ -692,8 +692,24 @@ export const injectExtensionAPIs = () => {
 
       webRequest: {
         factory: (base) => {
+          const onBeforeRequestEvent = new ExtensionEvent<
+            (details: chrome.webRequest.WebRequestBodyDetails) => void
+          >('webRequest.onBeforeRequest')
           return {
             ...base,
+            onBeforeRequest: {
+              addListener(
+                callback: (details: chrome.webRequest.WebRequestBodyDetails) => void,
+                filter: chrome.webRequest.RequestFilter,
+                extraInfoSpec?: string[],
+              ) {
+                invokeExtension('webRequest.addOnBeforeRequestListener')(filter, extraInfoSpec)
+                onBeforeRequestEvent.addListener(callback)
+              },
+              removeListener(callback: (details: chrome.webRequest.WebRequestBodyDetails) => void) {
+                onBeforeRequestEvent.removeListener(callback)
+              },
+            },
             onHeadersReceived: new ExtensionEvent('webRequest.onHeadersReceived'),
           }
         },
