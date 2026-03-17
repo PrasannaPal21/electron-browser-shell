@@ -132,6 +132,7 @@ export class WebNavigationAPI {
     tab: Electron.WebContents,
     { url, frame }: Electron.Event<Electron.WebContentsWillNavigateEventParams>,
   ) => {
+    if (tab.isDestroyed()) return
     const details = withFrame(frame, (f) => ({
       sourceTabId: tab.id,
       sourceProcessId: f.processId,
@@ -152,6 +153,7 @@ export class WebNavigationAPI {
       frame,
     }: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>,
   ) => {
+    if (tab.isDestroyed()) return
     if (isSameDocument) return
 
     const details = withFrame(frame, (f) => ({
@@ -178,6 +180,7 @@ export class WebNavigationAPI {
     frameProcessId: number,
     frameRoutingId: number,
   ) => {
+    if (tab.isDestroyed()) return
     const frame = getFrame(frameProcessId, frameRoutingId)
     const details = withFrame(frame ?? null, (f) => ({
       frameId: getFrameId(f),
@@ -203,6 +206,7 @@ export class WebNavigationAPI {
     frameProcessId: number,
     frameRoutingId: number,
   ) => {
+    if (tab.isDestroyed()) return
     const frame = getFrame(frameProcessId, frameRoutingId)
     const details = withFrame(frame ?? null, (f) => ({
       transitionType: '', // TODO
@@ -221,6 +225,7 @@ export class WebNavigationAPI {
   }
 
   private onDOMContentLoaded = (tab: Electron.WebContents, frame: Electron.WebFrameMain) => {
+    if (tab.isDestroyed()) return
     const details = withFrame(frame, (f) => ({
       frameId: getFrameId(f),
       parentFrameId: getParentFrameId(f),
@@ -246,6 +251,7 @@ export class WebNavigationAPI {
     frameProcessId: number,
     frameRoutingId: number,
   ) => {
+    if (tab.isDestroyed()) return
     const frame = getFrame(frameProcessId, frameRoutingId)
     const url = tab.getURL()
     const details = withFrame(frame ?? null, (f) => ({

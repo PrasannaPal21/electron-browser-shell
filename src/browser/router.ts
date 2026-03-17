@@ -104,8 +104,14 @@ class RoutingDelegate {
     d(`received '${handlerName}'`, args)
 
     const observer = this.sessionMap.get(getSessionFromEvent(event))
+    if (!observer) return undefined
 
-    return observer?.onExtensionMessage(event, extensionId, handlerName, ...args)
+    try {
+      return await observer.onExtensionMessage(event, extensionId, handlerName, ...args)
+    } catch (err) {
+      d('handler failed for %s (extension context may be torn down): %o', handlerName, err)
+      return undefined
+    }
   }
 
   private onRemoteMessage = async (
@@ -426,6 +432,7 @@ export class ExtensionRouter {
       return
     }
 
+    const deadListeners: EventListener[] = []
     let sentCount = 0
     for (const listener of eventListeners) {
       const { type, extensionId } = listener
@@ -442,22 +449,42 @@ export class ExtensionRouter {
           .then((serviceWorker) => {
             setTimeout(() => {
               if (!serviceWorker || (serviceWorker as any).isDestroyed?.()) return
-              serviceWorker.send(ipcName, ...argsCopy)
+              try {
+                serviceWorker.send(ipcName, ...argsCopy)
+              } catch (err) {
+                d('service worker send failed for %s: %o', eventName, err)
+              }
             }, 200)
           })
           .catch((error) => {
             d('failed to send %s to %s', eventName, extensionId)
             console.error(error)
           })
+        sentCount++
       } else {
         if (listener.host.isDestroyed()) {
-          console.error(`Unable to send '${eventName}' to extension host for ${extensionId}`)
+          deadListeners.push(listener)
           continue
         }
-        listener.host.send(ipcName, ...args)
+        try {
+          listener.host.send(ipcName, ...args)
+          sentCount++
+        } catch (err) {
+          d('send %s to extension %s failed (host may be tearing down): %o', eventName, extensionId, err)
+          deadListeners.push(listener)
+        }
       }
+    }
 
-      sentCount++
+    if (deadListeners.length > 0) {
+      const deadSet = new Set(deadListeners)
+      const filtered = eventListeners.filter((l) => !deadSet.has(l))
+      if (filtered.length > 0) {
+        listeners.set(eventName, filtered)
+      } else {
+        listeners.delete(eventName)
+      }
+      d(`removed ${deadListeners.length} dead listener(s) for '${eventName}'`)
     }
 
     if (sentCount === 0 && targetExtensionId) {
