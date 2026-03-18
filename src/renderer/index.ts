@@ -95,7 +95,7 @@ export const injectExtensionAPIs = () => {
     // Use context bridge API or closure variable when context isolation is disabled.
     const electron = ((globalThis as any).electron as typeof electronContext) || electronContext
 
-    const chrome = globalThis.chrome || {}
+    const chrome: any = (globalThis as any).chrome || {}
     const extensionId = chrome.runtime?.id
 
     // NOTE: This uses a synchronous IPC to get the extension manifest.
@@ -306,7 +306,7 @@ export const injectExtensionAPIs = () => {
     /**
      * Factories for each additional chrome.* API.
      */
-    const apiDefinitions: Partial<APIFactoryMap> = {
+    const apiDefinitions: any = {
       action: {
         shouldInject: () => manifest.manifest_version === 3 && !!manifest.action,
         factory: browserActionFactory,
@@ -785,7 +785,9 @@ export const injectExtensionAPIs = () => {
                 if (wrapper) {
                   onBeforeRequestEvent.removeListener(wrapper)
                   onBeforeRequestWrapperMap.delete(callback)
-                  invokeExtension('webRequest.removeOnBeforeRequestListener')().catch(() => {})
+                  if (!onBeforeRequestEvent.hasListeners()) {
+                    invokeExtension('webRequest.removeOnBeforeRequestListener')().catch(() => {})
+                  }
                 } else {
                   onBeforeRequestEvent.removeListener(callback as any)
                 }
@@ -850,7 +852,9 @@ export const injectExtensionAPIs = () => {
                 if (wrapper) {
                   onBeforeSendHeadersEvent.removeListener(wrapper)
                   onBeforeSendHeadersWrapperMap.delete(callback)
-                  invokeExtension('webRequest.removeOnBeforeSendHeadersListener')().catch(() => {})
+                  if (!onBeforeSendHeadersEvent.hasListeners()) {
+                    invokeExtension('webRequest.removeOnBeforeSendHeadersListener')().catch(() => {})
+                  }
                 } else {
                   onBeforeSendHeadersEvent.removeListener(callback as any)
                 }
@@ -884,6 +888,9 @@ export const injectExtensionAPIs = () => {
                 callback: (details: chrome.webRequest.WebRequestHeadersDetails) => void,
               ) {
                 onSendHeadersEvent.removeListener(callback)
+                if (!onSendHeadersEvent.hasListeners()) {
+                  invokeExtension('webRequest.removeOnSendHeadersListener')().catch(() => {})
+                }
               },
               hasListener(
                 callback: (details: chrome.webRequest.WebRequestHeadersDetails) => void,
@@ -941,7 +948,9 @@ export const injectExtensionAPIs = () => {
                 if (wrapper) {
                   onHeadersReceivedEvent.removeListener(wrapper)
                   onHeadersReceivedWrapperMap.delete(callback)
-                  invokeExtension('webRequest.removeOnHeadersReceivedListener')().catch(() => {})
+                  if (!onHeadersReceivedEvent.hasListeners()) {
+                    invokeExtension('webRequest.removeOnHeadersReceivedListener')().catch(() => {})
+                  }
                 } else {
                   onHeadersReceivedEvent.removeListener(callback as any)
                 }
@@ -975,6 +984,9 @@ export const injectExtensionAPIs = () => {
                 callback: (details: chrome.webRequest.WebResponseCacheDetails) => void,
               ) {
                 onResponseStartedEvent.removeListener(callback)
+                if (!onResponseStartedEvent.hasListeners()) {
+                  invokeExtension('webRequest.removeOnResponseStartedListener')().catch(() => {})
+                }
               },
               hasListener(
                 callback: (details: chrome.webRequest.WebResponseCacheDetails) => void,
@@ -1001,6 +1013,9 @@ export const injectExtensionAPIs = () => {
                 callback: (details: chrome.webRequest.WebResponseCacheDetails) => void,
               ) {
                 onCompletedEvent.removeListener(callback)
+                if (!onCompletedEvent.hasListeners()) {
+                  invokeExtension('webRequest.removeOnCompletedListener')().catch(() => {})
+                }
               },
               hasListener(
                 callback: (details: chrome.webRequest.WebResponseCacheDetails) => void,
@@ -1027,6 +1042,9 @@ export const injectExtensionAPIs = () => {
                 callback: (details: chrome.webRequest.WebResponseErrorDetails) => void,
               ) {
                 onErrorOccurredEvent.removeListener(callback)
+                if (!onErrorOccurredEvent.hasListeners()) {
+                  invokeExtension('webRequest.removeOnErrorOccurredListener')().catch(() => {})
+                }
               },
               hasListener(
                 callback: (details: chrome.webRequest.WebResponseErrorDetails) => void,
@@ -1064,10 +1082,10 @@ export const injectExtensionAPIs = () => {
     }
 
     // Initialize APIs
-    Object.keys(apiDefinitions).forEach((key: any) => {
-      const apiName: keyof typeof chrome = key
+    Object.keys(apiDefinitions).forEach((apiName) => {
       const baseApi = chrome[apiName] as any
-      const api = apiDefinitions[apiName]!
+      const api = (apiDefinitions as any)[apiName] as any
+      if (!api) return
 
       // Allow APIs to opt-out of being available in this context.
       if (api.shouldInject && !api.shouldInject()) return

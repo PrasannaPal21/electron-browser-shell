@@ -582,6 +582,11 @@ export class WebRequestAPI {
       payloadBase.requestId || `wr-${++this.requestIdCounter}`
     const payloadWithId = { ...payloadBase, requestId }
 
+    const blockingEntries = matching.filter(
+      (e) => Array.isArray(e.extraInfoSpec) && e.extraInfoSpec.includes('blocking'),
+    )
+    const expectedExtensionCount = new Set(blockingEntries.map((e) => e.extensionId)).size
+
     return new Promise<WebRequestBlockingResponse>((resolve) => {
       const timeoutHandle = setTimeout(() => {
         this.settlePending(requestId)
@@ -590,7 +595,8 @@ export class WebRequestAPI {
       this.pendingBlocking.set(requestId, {
         resolve,
         results: new Map(),
-        expectedCount: matching.length,
+        // Wait for one response per extension, not per listener entry.
+        expectedCount: expectedExtensionCount,
         timeoutHandle,
         merge: (results) => this.mergeCancelOrRedirect(results as Map<string, WebRequestBlockingResponse>),
       })
@@ -648,6 +654,12 @@ export class WebRequestAPI {
       payloadBase.requestId || `wr-${++this.requestIdCounter}`
     const payloadWithId: WebRequestDetails = { ...payloadBase, requestId }
 
+    const blockingEntries = matching.filter((e) => {
+      if (!Array.isArray(e.extraInfoSpec)) return false
+      return e.extraInfoSpec.includes('blocking') || e.extraInfoSpec.includes('requestHeaders')
+    })
+    const expectedExtensionCount = new Set(blockingEntries.map((e) => e.extensionId)).size
+
     return new Promise<{ requestHeaders?: Record<string, string | string[]> }>((resolve) => {
       const timeoutHandle = setTimeout(() => {
         this.settlePending(requestId)
@@ -656,7 +668,8 @@ export class WebRequestAPI {
       this.pendingBlocking.set(requestId, {
         resolve,
         results: new Map(),
-        expectedCount: matching.length,
+        // Wait for one response per extension, not per listener entry.
+        expectedCount: expectedExtensionCount,
         timeoutHandle,
         merge: (results) =>
           this.mergeRequestHeaders(details.requestHeaders as any, results),
@@ -741,6 +754,12 @@ export class WebRequestAPI {
       payloadBase.requestId || `wr-${++this.requestIdCounter}`
     const payloadWithId: WebRequestDetails = { ...payloadBase, requestId }
 
+    const blockingEntries = matching.filter((e) => {
+      if (!Array.isArray(e.extraInfoSpec)) return false
+      return e.extraInfoSpec.includes('blocking') || e.extraInfoSpec.includes('responseHeaders')
+    })
+    const expectedExtensionCount = new Set(blockingEntries.map((e) => e.extensionId)).size
+
     return new Promise<{ responseHeaders?: Record<string, string | string[]> }>((resolve) => {
       const timeoutHandle = setTimeout(() => {
         this.settlePending(requestId)
@@ -749,7 +768,8 @@ export class WebRequestAPI {
       this.pendingBlocking.set(requestId, {
         resolve,
         results: new Map(),
-        expectedCount: matching.length,
+        // Wait for one response per extension, not per listener entry.
+        expectedCount: expectedExtensionCount,
         timeoutHandle,
         merge: (results) =>
           this.mergeResponseHeaders(details.responseHeaders as any, results),
