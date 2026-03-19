@@ -85,7 +85,10 @@ export class PopupView extends EventEmitter {
     untypedWebContents.on('preferred-size-changed', this.updatePreferredSize)
 
     this.browserWindow.webContents.on('devtools-closed', this.maybeClose)
-    this.browserWindow.on('blur', this.maybeClose)
+    // NOTE: Don't auto-destroy popups on blur.
+    // On Windows/Electron, focus can transiently move during popup creation
+    // and immediately trigger blur, which makes extension popups appear to
+    // "not open". Peersky has its own popup lifecycle management.
     this.browserWindow.on('closed', this.destroy)
     this.parent.once('closed', this.destroy)
 

@@ -31,24 +31,38 @@ export const injectExtensionAPIs = () => {
     }
 
     let result
+    // Emulate Chrome's chrome.runtime.lastError for callback-style APIs.
+    // Many extensions (including archiveweb.page) check this inside callbacks.
+    let lastError: { message: string } | null = null
 
     try {
       result = await ipcRenderer.invoke('crx-msg', extensionId, fnName, ...args)
     } catch (e) {
-      // TODO: Set chrome.runtime.lastError?
       console.error(e)
       result = undefined
+      lastError = {
+        message: e instanceof Error ? e.message : String(e),
+      }
     }
 
     if (process.env.NODE_ENV === 'development') {
       console.log(fnName, '(result)', result)
     }
 
+    const chromeAny = (globalThis as any).chrome
     if (callback) {
-      callback(result)
-    } else {
-      return result
+      try {
+        if (chromeAny?.runtime) chromeAny.runtime.lastError = lastError
+        callback(result)
+      } finally {
+        if (chromeAny?.runtime) chromeAny.runtime.lastError = null
+      }
+      return
     }
+
+    // Promise-style APIs shouldn't expose lastError; clear any stale value.
+    if (chromeAny?.runtime) chromeAny.runtime.lastError = null
+    return result
   }
 
   type ConnectNativeCallback = (connectionId: string, send: (message: any) => void) => void
@@ -107,8 +121,8 @@ export const injectExtensionAPIs = () => {
 
     const invokeExtension =
       (fnName: string, opts: ExtensionMessageOptions = {}) =>
-      (...args: any[]) =>
-        electron.invokeExtension(extensionId, fnName, opts, ...args)
+        (...args: any[]) =>
+          electron.invokeExtension(extensionId, fnName, opts, ...args)
 
     function imageData2base64(imageData: ImageData) {
       const canvas = document.createElement('canvas')
@@ -549,28 +563,35 @@ export const injectExtensionAPIs = () => {
 
       runtime: {
         factory: (base) => {
-          return {
-            ...base,
-            connectNative: (application: string) => {
-              const port = new NativePort()
-              const receive = port._receive.bind(port)
-              const disconnect = port._disconnect.bind(port)
-              const callback: ConnectNativeCallback = (connectionId, send) => {
-                port._init(connectionId, send)
-              }
-              electron.connectNative(extensionId, application, receive, disconnect, callback)
-              return port
-            },
-            openOptionsPage: invokeExtension('runtime.openOptionsPage'),
-            sendNativeMessage: invokeExtension('runtime.sendNativeMessage'),
+          const patched: any = {}
+          // Copy ALL own properties from the native chrome.runtime object,
+          // including non-enumerable ones (connect, sendMessage, onConnect,
+          // onMessage, etc.) that the spread operator would silently drop.
+          if (base) {
+            for (const key of Object.getOwnPropertyNames(base)) {
+              try {
+                patched[key] = (base as any)[key]
+              } catch (_) { /* skip inaccessible */ }
+            }
           }
+          patched.connectNative = (application: string) => {
+            const port = new NativePort()
+            const receive = port._receive.bind(port)
+            const disconnect = port._disconnect.bind(port)
+            const callback: ConnectNativeCallback = (connectionId, send) => {
+              port._init(connectionId, send)
+            }
+            electron.connectNative(extensionId, application, receive, disconnect, callback)
+            return port
+          }
+          patched.openOptionsPage = invokeExtension('runtime.openOptionsPage')
+          patched.sendNativeMessage = invokeExtension('runtime.sendNativeMessage')
+          return patched
         },
       },
 
       storage: {
         factory: (base) => {
-          const local = base && base.local
-
           const customOnChanged = new ExtensionEvent('storage.onChanged')
           const originalAddListener = base?.onChanged?.addListener?.bind(base.onChanged)
           const originalRemoveListener = base?.onChanged?.removeListener?.bind(base.onChanged)
@@ -591,13 +612,23 @@ export const injectExtensionAPIs = () => {
 
           const onChanged = { addListener, removeListener, hasListener, hasListeners }
 
+          const ipcLocal = {
+            get: invokeExtension('storage.local.get'),
+            set: invokeExtension('storage.local.set'),
+            remove: invokeExtension('storage.local.remove'),
+            clear: invokeExtension('storage.local.clear'),
+            getBytesInUse: invokeExtension('storage.local.getBytesInUse'),
+            onChanged,
+            QUOTA_BYTES: 10485760,
+          }
+
           return {
             ...base,
             onChanged,
-            // TODO: provide a backend for browsers to opt-in to
-            managed: local,
+            local: ipcLocal,
+            managed: ipcLocal,
             sync: {
-              ...(base as any)?.sync ?? local,
+              ...(base as any)?.sync ?? ipcLocal,
               get: invokeExtension('storage.sync.get'),
               set: invokeExtension('storage.sync.set'),
               remove: invokeExtension('storage.sync.remove'),

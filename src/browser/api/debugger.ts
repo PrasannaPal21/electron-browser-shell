@@ -50,9 +50,11 @@ export class DebuggerAPI {
     }
 
     const onDetach = (_event: Electron.Event, reason: string) => {
-      d(`debugger detached from tab ${tabId}: ${reason}`)
+      // Normalize Electron's "target closed" to Chrome's "target_closed" for extension compatibility
+      const chromeReason = typeof reason === 'string' ? reason.replace(/\s+/g, '_') : reason
+      d(`debugger detached from tab ${tabId}: ${chromeReason}`)
       this.cleanupEntry(extensionId, tabId)
-      this.ctx.router.sendEvent(extensionId, 'debugger.onDetach', { tabId }, reason)
+      this.ctx.router.sendEvent(extensionId, 'debugger.onDetach', { tabId }, chromeReason)
     }
 
     const onMessage = (_event: Electron.Event, method: string, params: object) => {
@@ -164,6 +166,28 @@ export class DebuggerAPI {
     const tab = this.ctx.store.getTabById(tabId)
     if (!tab || tab.isDestroyed()) {
       throw new Error(`chrome.debugger.sendCommand: tab ${tabId} no longer exists`)
+    }
+
+    // Intercept Page.reload: CDP Page.reload can destroy/recreate webContents and detach the
+    // debugger. Use native reload so the same webContents (and debugger session) survives.
+    if (method === 'Page.reload') {
+      const params = (commandParams || {}) as { scriptToEvaluateOnLoad?: string; ignoreCache?: boolean }
+      if (params.scriptToEvaluateOnLoad) {
+        try {
+          await tab.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+            source: params.scriptToEvaluateOnLoad,
+          })
+        } catch (e) {
+          d(`Page.addScriptToEvaluateOnNewDocument failed: ${e}`)
+        }
+      }
+      d(`using native reload for tab ${tabId} (ignoreCache=${!!params.ignoreCache}) to preserve debugger`)
+      if (params.ignoreCache) {
+        tab.reloadIgnoringCache()
+      } else {
+        tab.reload()
+      }
+      return {}
     }
 
     d(`sending CDP command ${method} to tab ${tabId}`)
