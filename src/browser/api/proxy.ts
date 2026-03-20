@@ -52,6 +52,9 @@ export class ProxyAPI {
     details: chrome.types.ChromeSettingSetDetails<chrome.proxy.ProxyConfig>,
   ): Promise<void> => {
     const config = (details?.value || { mode: 'system' }) as chrome.proxy.ProxyConfig
+    console.log(
+      `[ProxyAPI] proxy.settings.set from extension=${extension.id} mode=${config?.mode ?? 'system'}`,
+    )
     await this.applyProxyConfig(config)
     this.currentConfig = config
     this.controllingExtensionId = extension.id
@@ -69,17 +72,23 @@ export class ProxyAPI {
     const mode = config?.mode || 'system'
 
     if (mode === 'direct') {
+      console.log('[ProxyAPI] session.setProxy direct')
       await this.ctx.session.setProxy({ mode: 'direct' })
       return
     }
 
     if (mode === 'system') {
+      console.log('[ProxyAPI] session.setProxy system')
       await this.ctx.session.setProxy({ mode: 'system' })
       return
     }
 
     if (mode === 'pac_script') {
       const pacScript = this.resolvePacScript(config.pacScript)
+      console.log('[ProxyAPI] session.setProxy pac_script', {
+        hasPacUrl: !!pacScript && !!config.pacScript?.url,
+        hasPacData: !!pacScript && !!config.pacScript?.data,
+      })
       await this.ctx.session.setProxy({
         mode: 'pac_script',
         pacScript,
@@ -89,14 +98,20 @@ export class ProxyAPI {
 
     if (mode === 'fixed_servers') {
       const proxyRules = this.resolveProxyRules(config.rules)
+      const proxyBypassRules = this.resolveBypassRules(config.rules)
+      console.log('[ProxyAPI] session.setProxy fixed_servers', {
+        proxyRules,
+        proxyBypassRules,
+      })
       await this.ctx.session.setProxy({
         mode: 'fixed_servers',
         proxyRules,
-        proxyBypassRules: this.resolveBypassRules(config.rules),
+        proxyBypassRules,
       })
       return
     }
 
+    console.log('[ProxyAPI] session.setProxy unknown mode', { mode })
     await this.ctx.session.setProxy({ mode: mode as Electron.ProxyConfig['mode'] })
   }
 
@@ -114,10 +129,23 @@ export class ProxyAPI {
   private resolveProxyRules(rules?: chrome.proxy.ProxyRules): string | undefined {
     if (!rules) return undefined
 
-    const singleProxyRule = this.formatSingleProxy(rules.singleProxy)
-    if (singleProxyRule) return singleProxyRule
-
     const segments: string[] = []
+
+    // Chrome's `singleProxy` applies to all schemes.
+    // Electron's `proxyRules` expects explicit scheme prefixes (e.g. `http=host:port;https=host:port`).
+    if (rules.singleProxy) {
+      const singleProxy = rules.singleProxy
+      const hostPort = this.formatHostPort(singleProxy)
+      if (!hostPort) return undefined
+
+      if (singleProxy.scheme === 'socks4' || singleProxy.scheme === 'socks5') {
+        return `socks=${hostPort}`
+      }
+
+      return ['http', 'https', 'ftp']
+        .map((s) => `${s}=${hostPort}`)
+        .join(';')
+    }
 
     const httpRule = this.formatSchemeProxy(rules.proxyForHttp)
     if (httpRule) segments.push(`http=${httpRule}`)
@@ -132,9 +160,14 @@ export class ProxyAPI {
     const fallbackRule = this.formatSchemeProxy(fallbackServer)
     if (fallbackRule) {
       if (fallbackServer?.scheme === 'socks4' || fallbackServer?.scheme === 'socks5') {
+        // Electron expects: `socks=host:port`
         segments.push(`socks=${fallbackRule}`)
       } else {
-        segments.push(fallbackRule)
+        // Electron expects explicit scheme segments: `http=...;https=...;ftp=...`
+        const scheme = fallbackServer?.scheme
+        if (scheme === 'http' || scheme === 'https' || scheme === 'ftp') {
+          segments.push(`${scheme}=${fallbackRule}`)
+        }
       }
     }
 
@@ -145,6 +178,7 @@ export class ProxyAPI {
   private resolveBypassRules(rules?: chrome.proxy.ProxyRules): string | undefined {
     const bypassList = rules?.bypassList
     if (!bypassList || bypassList.length === 0) return undefined
+    // Electron docs: `proxyBypassRules` is a comma-separated list.
     return bypassList.join(',')
   }
 
@@ -162,7 +196,8 @@ export class ProxyAPI {
     if (!hostPort) return undefined
 
     if (server?.scheme === 'socks4' || server?.scheme === 'socks5') {
-      return `${server.scheme}://${hostPort}`
+      // Electron expects `socks=host:port` (scheme prefix is handled elsewhere).
+      return hostPort
     }
 
     return hostPort
@@ -173,7 +208,8 @@ export class ProxyAPI {
     if (!hostPort) return undefined
 
     if (server?.scheme === 'socks4' || server?.scheme === 'socks5') {
-      return `${server.scheme}://${hostPort}`
+      // Electron expects `socks=host:port` (scheme prefix is handled elsewhere).
+      return hostPort
     }
 
     return hostPort

@@ -572,6 +572,7 @@ export const injectExtensionAPIs = () => {
               clear: invokeExtension('proxy.settings.clear'),
               onChange: new ExtensionEvent('proxy.settings.onChange'),
             },
+            onProxyError: new ExtensionEvent('proxy.onProxyError'),
           }
         },
       },
