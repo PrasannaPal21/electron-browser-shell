@@ -16,6 +16,7 @@ import { ContextMenusAPI } from './api/context-menus'
 import { ManagementAPI } from './api/management'
 import { RuntimeAPI } from './api/runtime'
 import { WebRequestAPI } from './api/web-request'
+import { DeclarativeNetRequestAPI } from './api/declarative-net-request'
 import { CookiesAPI } from './api/cookies'
 import { NotificationsAPI } from './api/notifications'
 import { ChromeExtensionImpl } from './impl'
@@ -132,6 +133,7 @@ export class ElectronChromeExtensions extends EventEmitter {
     contextMenus: ContextMenusAPI
     management: ManagementAPI
     webRequest: WebRequestAPI
+    declarativeNetRequest: DeclarativeNetRequestAPI
     commands: CommandsAPI
     cookies: CookiesAPI
     debugger: DebuggerAPI
@@ -171,11 +173,13 @@ export class ElectronChromeExtensions extends EventEmitter {
       store,
     }
 
+    const declarativeNetRequest = new DeclarativeNetRequestAPI(this.ctx)
     this.api = {
       browserAction: new BrowserActionAPI(this.ctx),
       contextMenus: new ContextMenusAPI(this.ctx),
       management: new ManagementAPI(this.ctx),
-      webRequest: new WebRequestAPI(this.ctx),
+      declarativeNetRequest,
+      webRequest: new WebRequestAPI(this.ctx, declarativeNetRequest),
       commands: new CommandsAPI(this.ctx),
       cookies: new CookiesAPI(this.ctx),
       debugger: new DebuggerAPI(this.ctx),

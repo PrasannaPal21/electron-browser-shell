@@ -1,6 +1,9 @@
+import { webContents as electronWebContents } from 'electron'
+
 import { ExtensionContext } from '../context'
 import { ExtensionEvent } from '../router'
 import { matchesPattern } from './common'
+import type { DeclarativeNetRequestAPI } from './declarative-net-request'
 
 interface ListenerEntry {
   id: string
@@ -55,6 +58,8 @@ interface ElectronRequestDetails {
   resourceType?: string
   timestamp?: number
   referrer?: string
+  webContents?: Electron.WebContents
+  frame?: Electron.WebFrameMain | null
   webContentsId?: number
   frameId?: number
   parentFrameId?: number
@@ -98,7 +103,10 @@ export class WebRequestAPI {
   private listenerIdCounter = 0
   private pendingBlocking = new Map<string, PendingBlockingRequest>()
 
-  constructor(private ctx: ExtensionContext) {
+  constructor(
+    private ctx: ExtensionContext,
+    private dnr: DeclarativeNetRequestAPI | null = null,
+  ) {
     const handle = this.ctx.router.apiHandler()
     handle('webRequest.addOnBeforeRequestListener', this.addOnBeforeRequestListener, {
       permission: 'webRequest',
@@ -504,6 +512,58 @@ export class WebRequestAPI {
     return undefined
   }
 
+  /**
+   * Referrer is often empty under strict referrer policies; DNR rules then mis-classify
+   * first-party subresources as third-party. Fall back to the requesting frame URL or tab URL.
+   */
+  private resolveInitiator(details: ElectronRequestDetails): string | undefined {
+    const ref = details.referrer
+    if (typeof ref === 'string' && ref.length > 0) {
+      try {
+        const u = new URL(ref)
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          return ref
+        }
+      } catch {
+        /* continue */
+      }
+    }
+    try {
+      const frameUrl = details.frame?.url
+      if (typeof frameUrl === 'string' && (frameUrl.startsWith('http://') || frameUrl.startsWith('https://'))) {
+        return frameUrl
+      }
+    } catch {
+      /* continue */
+    }
+    try {
+      const wc = details.webContents
+      if (wc && typeof wc.isDestroyed === 'function' && !wc.isDestroyed()) {
+        const tabUrl = wc.getURL()
+        if (tabUrl.startsWith('http://') || tabUrl.startsWith('https://')) {
+          return tabUrl
+        }
+      }
+    } catch {
+      /* continue */
+    }
+    const wid = details.webContentsId
+    if (typeof wid === 'number') {
+      try {
+        const wc = electronWebContents.fromId(wid)
+        if (wc && !wc.isDestroyed()) {
+          const tabUrl = wc.getURL()
+          if (tabUrl.startsWith('http://') || tabUrl.startsWith('https://')) {
+            return tabUrl
+          }
+        }
+      } catch {
+        /* continue */
+      }
+    }
+    return undefined
+  }
+
   private buildDetails(
     details: ElectronRequestDetails,
     opts?: { includeRequestBody?: boolean },
@@ -534,7 +594,7 @@ export class WebRequestAPI {
         typeof details.parentFrameId === 'number' ? details.parentFrameId : -1,
       type: this.normalizeResourceType(details.resourceType),
       timeStamp: details.timestamp != null ? details.timestamp : Date.now(),
-      initiator: details.referrer || undefined,
+      initiator: this.resolveInitiator(details),
       requestBody: opts?.includeRequestBody ? this.normalizeRequestBody(details) : undefined,
       requestHeaders: details.requestHeaders,
       responseHeaders: details.responseHeaders,
@@ -702,6 +762,14 @@ export class WebRequestAPI {
     const probe = this.buildDetails(details as unknown as ElectronRequestDetails, {
       includeRequestBody: false,
     })
+
+    if (this.dnr) {
+      const dnrResult = this.dnr.evaluateOnBeforeRequest(probe)
+      if (dnrResult?.cancel === true || typeof dnrResult?.redirectUrl === 'string') {
+        return dnrResult
+      }
+    }
+
     const matching = this.findMatchingListeners(this.onBeforeRequestListeners, probe)
     if (matching.length === 0) return {}
 

@@ -419,6 +419,22 @@ export const injectExtensionAPIs = () => {
         },
       },
 
+      declarativeNetRequest: {
+        factory: (base) => {
+          return {
+            ...base,
+            getDynamicRules: invokeExtension('declarativeNetRequest.getDynamicRules'),
+            updateDynamicRules: invokeExtension('declarativeNetRequest.updateDynamicRules'),
+            getSessionRules: invokeExtension('declarativeNetRequest.getSessionRules'),
+            updateSessionRules: invokeExtension('declarativeNetRequest.updateSessionRules'),
+            getEnabledRulesets: invokeExtension('declarativeNetRequest.getEnabledRulesets'),
+            updateEnabledRulesets: invokeExtension('declarativeNetRequest.updateEnabledRulesets'),
+            isRegexSupported: invokeExtension('declarativeNetRequest.isRegexSupported'),
+            getMatchedRules: invokeExtension('declarativeNetRequest.getMatchedRules'),
+          }
+        },
+      },
+
       // TODO: implement
       downloads: {
         factory: (base) => {
