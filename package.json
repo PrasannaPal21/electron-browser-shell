@@ -52,7 +52,7 @@
     "electron": ">=35.0.0"
   },
   "dependencies": {
-    "abp-filter-parser": "^0.1.10",
+    "abp-filter-parser": "npm:@brigand/abp-filter-parser@^0.3.2",
     "debug": "^4.3.1",
     "tldts": "^7.0.27"
   },
