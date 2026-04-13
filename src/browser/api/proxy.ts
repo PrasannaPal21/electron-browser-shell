@@ -61,7 +61,14 @@ export class ProxyAPI {
     this.emitSettingsChange()
   }
 
-  private settingsClear = async (): Promise<void> => {
+  private settingsClear = async ({ extension }: ExtensionEvent): Promise<void> => {
+    if (this.controllingExtensionId && this.controllingExtensionId !== extension.id) {
+      console.log(
+        `[ProxyAPI] proxy.settings.clear denied for extension=${extension.id} controlledBy=${this.controllingExtensionId}`,
+      )
+      return
+    }
+
     await this.ctx.session.setProxy({ mode: 'system' })
     this.currentConfig = { mode: 'system' }
     this.controllingExtensionId = undefined
