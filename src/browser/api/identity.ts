@@ -34,6 +34,17 @@ export class IdentityAPI {
     if (!url || typeof url !== 'string') {
       throw new Error('chrome.identity.launchWebAuthFlow: options.url is required')
     }
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      throw new Error('chrome.identity.launchWebAuthFlow: options.url must be a valid URL')
+    }
+    if (parsedUrl.protocol !== 'https:') {
+      throw new Error(
+        'chrome.identity.launchWebAuthFlow: options.url must use https protocol',
+      )
+    }
 
     const extensionId = extension.id
     const redirectPrefix = getRedirectUrlPrefix(extensionId)
