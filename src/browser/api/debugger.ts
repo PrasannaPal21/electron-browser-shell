@@ -107,14 +107,17 @@ export class DebuggerAPI {
 
     const tab = this.ctx.store.getTabById(tabId)
     if (tab && !tab.isDestroyed()) {
+      const entry = extMap.get(tabId)
+      // Electron does not always emit a 'detach' event reliably across platforms/tests
+      // when detach() is initiated programmatically. Remove listeners first to avoid
+      // double-firing, then emit a Chrome-style onDetach event ourselves.
+      if (entry) {
+        this.removeListeners(tab, entry)
+      }
       try {
         tab.debugger.detach()
       } catch {
         // Ignored
-      }
-      const entry = extMap.get(tabId)
-      if (entry) {
-        this.removeListeners(tab, entry)
       }
     }
 
@@ -123,6 +126,8 @@ export class DebuggerAPI {
       this.attached.delete(extensionId)
     }
 
+    // Chrome uses "canceled_by_user" when the extension detaches.
+    this.ctx.router.sendEvent(extensionId, 'debugger.onDetach', { tabId }, 'canceled_by_user')
     d(`extension ${extensionId} detached debugger from tab ${tabId}`)
   }
 
