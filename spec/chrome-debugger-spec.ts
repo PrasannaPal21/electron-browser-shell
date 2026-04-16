@@ -85,6 +85,8 @@ describe('chrome.debugger', () => {
       await browser.crx.exec('debugger.attach', { tabId }, '1.3')
 
       const eventPromise = browser.crx.eventOnce('debugger.onDetach')
+      // Allow the event listener registration IPC to flush before detaching.
+      await new Promise<void>((resolve) => setTimeout(resolve, 50))
       await browser.crx.exec('debugger.detach', { tabId })
 
       const [target, reason] = await eventPromise
