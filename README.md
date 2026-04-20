@@ -9,7 +9,7 @@ This library aims to bring extension support in Electron up to the level you'd c
 ## Install
 
 ```
-npm install @peersky/peersky-browser-shell
+npm install @p2plabs/peersky-browser-shell
 ```
 
 ## Screenshots

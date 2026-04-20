@@ -1,5 +1,5 @@
 {
-  "name": "@peersky/peersky-browser-shell",
+  "name": "@p2plabs/peersky-browser-shell",
   "version": "1.0.0",
   "description": "Fork of electron-browser-shell with extended Chrome API implementations for browser extensions",
   "main": "./dist/cjs/index.js",
