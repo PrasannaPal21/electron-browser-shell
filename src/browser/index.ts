@@ -29,6 +29,7 @@ import { PermissionsAPI } from './api/permissions'
 import { ProxyAPI } from './api/proxy'
 import { ScriptingAPI } from './api/scripting'
 import { resolvePartition } from './partition'
+import { ExtensionStateStore } from './state-store'
 
 function checkVersion() {
   const electronVersion = process.versions.electron
@@ -174,13 +175,18 @@ export class ElectronChromeExtensions extends EventEmitter {
 
     const router = new ExtensionRouter(session)
     const store = new ExtensionStore(impl)
+    const stateStore = new ExtensionStateStore(session)
 
     this.ctx = {
       emit: this.emit.bind(this),
       router,
       session,
       store,
+      stateStore,
     }
+    void stateStore.hydrate().catch((error) => {
+      console.error('Failed to hydrate extension API state store:', error)
+    })
 
     const declarativeNetRequest = new DeclarativeNetRequestAPI(this.ctx)
     this.api = {
@@ -259,6 +265,16 @@ export class ElectronChromeExtensions extends EventEmitter {
     const sessionExtensions = this.ctx.session.extensions || this.ctx.session
     sessionExtensions.addListener('extension-loaded', (_event, extension) => {
       readLoadedExtensionManifest(this.ctx, extension)
+    })
+    sessionExtensions.addListener('extension-unloaded', () => {
+      void this.ctx.stateStore.flush().catch((error) => {
+        console.error('Failed to flush extension API state store:', error)
+      })
+    })
+    app.once('before-quit', () => {
+      void this.ctx.stateStore.flush().catch((error) => {
+        console.error('Failed to flush extension API state store during shutdown:', error)
+      })
     })
   }
 
