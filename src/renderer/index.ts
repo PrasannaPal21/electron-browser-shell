@@ -378,6 +378,21 @@ export const injectExtensionAPIs = () => {
         factory: browserActionFactory,
       },
 
+      alarms: {
+        shouldInject: () => !!(manifest.permissions as string[] | undefined)?.includes('alarms'),
+        factory: (base) => {
+          return {
+            ...base,
+            create: invokeExtension('alarms.create'),
+            get: invokeExtension('alarms.get'),
+            getAll: invokeExtension('alarms.getAll'),
+            clear: invokeExtension('alarms.clear'),
+            clearAll: invokeExtension('alarms.clearAll'),
+            onAlarm: new ExtensionEvent('alarms.onAlarm'),
+          }
+        },
+      },
+
       commands: {
         factory: (base) => {
           return {

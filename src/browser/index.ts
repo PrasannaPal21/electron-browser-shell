@@ -30,6 +30,7 @@ import { ProxyAPI } from './api/proxy'
 import { ScriptingAPI } from './api/scripting'
 import { resolvePartition } from './partition'
 import { ExtensionStateStore } from './state-store'
+import { AlarmsAPI } from './api/alarms'
 
 function checkVersion() {
   const electronVersion = process.versions.electron
@@ -50,10 +51,15 @@ function normalizeProxyAuthHost(host: string): string {
 function resolvePreloadPath(modulePath?: string) {
   // Attempt to resolve preload path from module exports
   try {
-    return createRequire(__dirname).resolve('peersky-chrome-extensions/preload')
-  } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error(error)
+    return createRequire(__dirname).resolve('@p2plabs/peersky-chrome-extensions/preload')
+  } catch {
+    // Backward compatibility for older package names.
+    try {
+      return createRequire(__dirname).resolve('peersky-chrome-extensions/preload')
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(error)
+      }
     }
   }
 
@@ -152,6 +158,7 @@ export class ElectronChromeExtensions extends EventEmitter {
     permissions: PermissionsAPI
     proxy: ProxyAPI
     runtime: RuntimeAPI
+    alarms: AlarmsAPI
     scripting: ScriptingAPI
     storageSync: StorageSyncAPI
     tabs: TabsAPI
@@ -203,6 +210,7 @@ export class ElectronChromeExtensions extends EventEmitter {
       permissions: new PermissionsAPI(this.ctx),
       proxy: new ProxyAPI(this.ctx),
       runtime: new RuntimeAPI(this.ctx),
+      alarms: new AlarmsAPI(this.ctx),
       scripting: new ScriptingAPI(this.ctx),
       storageSync: new StorageSyncAPI(this.ctx),
       tabs: new TabsAPI(this.ctx),
