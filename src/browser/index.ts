@@ -31,6 +31,7 @@ import { ScriptingAPI } from './api/scripting'
 import { resolvePartition } from './partition'
 import { ExtensionStateStore } from './state-store'
 import { AlarmsAPI } from './api/alarms'
+import { DownloadsAPI } from './api/downloads'
 
 function checkVersion() {
   const electronVersion = process.versions.electron
@@ -159,6 +160,7 @@ export class ElectronChromeExtensions extends EventEmitter {
     proxy: ProxyAPI
     runtime: RuntimeAPI
     alarms: AlarmsAPI
+    downloads: DownloadsAPI
     scripting: ScriptingAPI
     storageSync: StorageSyncAPI
     tabs: TabsAPI
@@ -211,6 +213,7 @@ export class ElectronChromeExtensions extends EventEmitter {
       proxy: new ProxyAPI(this.ctx),
       runtime: new RuntimeAPI(this.ctx),
       alarms: new AlarmsAPI(this.ctx),
+      downloads: new DownloadsAPI(this.ctx),
       scripting: new ScriptingAPI(this.ctx),
       storageSync: new StorageSyncAPI(this.ctx),
       tabs: new TabsAPI(this.ctx),
