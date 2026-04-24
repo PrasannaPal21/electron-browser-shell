@@ -140,6 +140,35 @@ describe('chrome.tabs', () => {
       expect(results).to.be.length(1)
       expect(results[0].url).to.be.equal(server.getUrl())
     })
+
+    it('returns deterministic window-local indexes', async () => {
+      const first = await browser.crx.exec('tabs.create', { url: `${server.getUrl()}index-a` })
+      const second = await browser.crx.exec('tabs.create', { url: `${server.getUrl()}index-b` })
+      await new Promise<void>((resolve) => setTimeout(resolve, 20))
+
+      const sameWindowTabs = await browser.crx.exec('tabs.query', { windowId: browser.window.id })
+      const firstTab = sameWindowTabs.find((tab: any) => tab.id === first.id)
+      const secondTab = sameWindowTabs.find((tab: any) => tab.id === second.id)
+
+      expect(firstTab).to.be.an('object')
+      expect(secondTab).to.be.an('object')
+      expect(firstTab.index).to.be.a('number')
+      expect(secondTab.index).to.be.a('number')
+      expect(secondTab.index).to.equal(firstTab.index + 1)
+    })
+
+    it('supports index filtering against stable indexes', async () => {
+      const tabs = await browser.crx.exec('tabs.query', { windowId: browser.window.id })
+      expect(tabs.length).to.be.greaterThan(0)
+      const target = tabs[0]
+
+      const byIndex = await browser.crx.exec('tabs.query', {
+        windowId: browser.window.id,
+        index: target.index,
+      })
+      expect(byIndex).to.be.an('array')
+      expect(byIndex.some((tab: any) => tab.id === target.id)).to.equal(true)
+    })
   })
 
   describe('reload()', () => {

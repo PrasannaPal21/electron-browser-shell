@@ -45,6 +45,67 @@ export class TabsAPI {
     this.ctx.store.on('tab-added', this.observeTab.bind(this))
   }
 
+  private getWindowTabs(win: Electron.BaseWindow | undefined) {
+    if (!win || win.isDestroyed()) return []
+    return Array.from(this.ctx.store.tabs).filter((tab) => {
+      if (tab.isDestroyed()) return false
+      const tabWindow = this.ctx.store.tabToWindow.get(tab)
+      return !!tabWindow && !tabWindow.isDestroyed() && tabWindow.id === win.id
+    })
+  }
+
+  private resolveCurrentWindow(event: ExtensionEvent) {
+    const mappedWindow = this.ctx.store.getCurrentWindowForExtension(event.extension.id)
+    if (mappedWindow && !mappedWindow.isDestroyed()) return mappedWindow
+
+    const senderAny = event.sender as any
+    const senderId = typeof senderAny?.id === 'number' ? senderAny.id : undefined
+    const senderTab = typeof senderId === 'number' ? this.ctx.store.getTabById(senderId) : undefined
+    const senderWindow =
+      typeof senderId === 'number'
+        ? this.ctx.store.getWindowById(senderId) ||
+          (senderTab ? this.ctx.store.tabToWindow.get(senderTab) : undefined) ||
+          null
+        : null
+    if (senderWindow && !senderWindow.isDestroyed()) {
+      const parentWindow = senderWindow.getParentWindow?.()
+      const resolved =
+        parentWindow && !parentWindow.isDestroyed() ? parentWindow : this.ctx.store.getWindowById(senderWindow.id)
+      if (resolved && !resolved.isDestroyed()) {
+        const active = this.ctx.store.getActiveTabFromWindow(resolved)
+        if (active && !active.isDestroyed()) {
+          this.ctx.store.setActivationContext(event.extension.id, resolved.id, active.id)
+        }
+        return resolved
+      }
+    }
+
+    const fallback = this.ctx.store.getCurrentWindow()
+    return fallback && !fallback.isDestroyed() ? fallback : null
+  }
+
+  private resolveTabIndex(tab: TabContents, win: Electron.BaseWindow | undefined) {
+    if (!win || win.isDestroyed()) return -1
+
+    if (typeof this.ctx.store.impl.getTabIndex === 'function') {
+      const index = this.ctx.store.impl.getTabIndex(tab, win)
+      if (typeof index === 'number' && index >= 0) return index
+    }
+
+    return this.getWindowTabs(win).findIndex((candidate) => candidate.id === tab.id)
+  }
+
+  private refreshWindowTabIndexes(win: Electron.BaseWindow | undefined) {
+    if (!win || win.isDestroyed()) return
+    const tabs = this.getWindowTabs(win)
+    tabs.forEach((windowTab, index) => {
+      const cached = this.ctx.store.tabDetailsCache.get(windowTab.id)
+      if (cached) {
+        cached.index = index
+      }
+    })
+  }
+
   private observeTab(tab: TabContents) {
     const tabId = tab.id
 
@@ -113,7 +174,7 @@ export class TabsAPI {
       highlighted: false,
       id: tabId,
       incognito: false,
-      index: -1, // TODO
+      index: this.resolveTabIndex(tab, win),
       groupId: -1, // TODO(mv3): implement?
       mutedInfo: { muted: tab.audioMuted },
       pinned: false,
@@ -149,7 +210,7 @@ export class TabsAPI {
 
   private getAllInWindow(event: ExtensionEvent, windowId: number = TabsAPI.WINDOW_ID_CURRENT) {
     if (windowId === TabsAPI.WINDOW_ID_CURRENT) {
-      const currentWin = this.ctx.store.getCurrentWindowForExtension(event.extension.id)
+      const currentWin = this.resolveCurrentWindow(event)
       windowId = currentWin?.id ?? this.ctx.store.lastFocusedWindowId!
     }
 
@@ -166,7 +227,7 @@ export class TabsAPI {
   }
 
   private getCurrent(event: ExtensionEvent) {
-    const currentWin = this.ctx.store.getCurrentWindowForExtension(event.extension.id)
+    const currentWin = this.resolveCurrentWindow(event)
     const tab = currentWin
       ? this.ctx.store.getActiveTabFromWindow(currentWin)
       : this.ctx.store.getActiveTabOfCurrentWindow()
@@ -199,7 +260,7 @@ export class TabsAPI {
     let win: Electron.BaseWindow | null
 
     if (windowId == null || windowId === TabsAPI.WINDOW_ID_CURRENT) {
-      win = store.getCurrentWindowForExtension(event.extension.id)
+      win = this.resolveCurrentWindow(event)
     } else {
       win = store.getWindowById(windowId)
     }
@@ -253,7 +314,7 @@ export class TabsAPI {
 
     // Resolve the effective "current window" for this extension, preferring
     // its browser-action activation context over the OS-focused window.
-    const currentWin = this.ctx.store.getCurrentWindowForExtension(event.extension.id)
+    const currentWin = this.resolveCurrentWindow(event)
     const effectiveCurrentWindowId = currentWin?.id ?? this.ctx.store.lastFocusedWindowId
 
     const filteredTabs = Array.from(this.ctx.store.tabs)
@@ -297,15 +358,8 @@ export class TabsAPI {
           }
         }
         // if (isSet(info.windowType) && info.windowType !== tab.windowType) return false
-        // if (isSet(info.index) && info.index !== tab.index) return false
+        if (isSet(info.index) && info.index !== t.index) return false
         return true
-      })
-      .map((tab, index) => {
-        const t = tab as any
-        if (t) {
-          t.index = index
-        }
-        return t
       })
     return filteredTabs
   }
@@ -384,6 +438,7 @@ export class TabsAPI {
   onCreated(tabId: number) {
     const tab = this.ctx.store.getTabById(tabId)
     if (!tab) return
+    this.refreshWindowTabIndexes(this.ctx.store.tabToWindow.get(tab))
     const tabDetails = this.getTabDetails(tab)
     this.ctx.router.broadcastEvent('tabs.onCreated', tabDetails)
   }
@@ -449,6 +504,8 @@ export class TabsAPI {
       windowId,
       isWindowClosing: win ? win.isDestroyed() : false,
     })
+
+    this.refreshWindowTabIndexes(win || undefined)
   }
 
   onActivated(tabId: number) {

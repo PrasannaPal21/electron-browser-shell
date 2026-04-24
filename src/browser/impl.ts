@@ -11,6 +11,7 @@ export interface ChromeExtensionImpl {
    * background pages and content scripts.
    */
   assignTabDetails?(details: chrome.tabs.Tab, tab: Electron.WebContents): void
+  getTabIndex?(tab: Electron.WebContents, window: Electron.BaseWindow): number | undefined
 
   createWindow?(details: chrome.windows.CreateData): Promise<Electron.BaseWindow>
   removeWindow?(window: Electron.BaseWindow): void
