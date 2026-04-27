@@ -668,6 +668,9 @@ export const injectExtensionAPIs = () => {
               }
               return ipcExecuteScript(injection)
             },
+            registerContentScripts: invokeExtension('scripting.registerContentScripts'),
+            getRegisteredContentScripts: invokeExtension('scripting.getRegisteredContentScripts'),
+            unregisterContentScripts: invokeExtension('scripting.unregisterContentScripts'),
           }
         },
       },
