@@ -43,21 +43,22 @@ export class DownloadsAPI {
 
   constructor(private ctx: ExtensionContext) {
     const handle = this.ctx.router.apiHandler()
-    // Electron may classify 'downloads' as unknown in some manifests.
-    // Avoid hard-failing calls so real-world extensions can still run.
-    handle('downloads.download', this.download)
-    handle('downloads.search', this.search)
-    handle('downloads.pause', this.pause)
-    handle('downloads.resume', this.resume)
-    handle('downloads.cancel', this.cancel)
-    handle('downloads.erase', this.erase)
-    handle('downloads.acceptDanger', this.unsupported('downloads.acceptDanger'))
-    handle('downloads.getFileIcon', this.unsupported('downloads.getFileIcon'))
-    handle('downloads.open', this.unsupported('downloads.open'))
-    handle('downloads.removeFile', this.unsupported('downloads.removeFile'))
-    handle('downloads.setUiOptions', this.unsupported('downloads.setUiOptions'))
-    handle('downloads.show', this.unsupported('downloads.show'))
-    handle('downloads.showDefaultFolder', this.unsupported('downloads.showDefaultFolder'))
+    // Electron may classify 'downloads' as unknown in some manifests; hosts can
+    // still use `setPermissionResolver` so optional/granted downloads access is honored.
+    const downloadsPerm = { permission: 'downloads' as const }
+    handle('downloads.download', this.download, downloadsPerm)
+    handle('downloads.search', this.search, downloadsPerm)
+    handle('downloads.pause', this.pause, downloadsPerm)
+    handle('downloads.resume', this.resume, downloadsPerm)
+    handle('downloads.cancel', this.cancel, downloadsPerm)
+    handle('downloads.erase', this.erase, downloadsPerm)
+    handle('downloads.acceptDanger', this.unsupported('downloads.acceptDanger'), downloadsPerm)
+    handle('downloads.getFileIcon', this.unsupported('downloads.getFileIcon'), downloadsPerm)
+    handle('downloads.open', this.unsupported('downloads.open'), downloadsPerm)
+    handle('downloads.removeFile', this.unsupported('downloads.removeFile'), downloadsPerm)
+    handle('downloads.setUiOptions', this.unsupported('downloads.setUiOptions'), downloadsPerm)
+    handle('downloads.show', this.unsupported('downloads.show'), downloadsPerm)
+    handle('downloads.showDefaultFolder', this.unsupported('downloads.showDefaultFolder'), downloadsPerm)
 
     this.restoreReady = this.restore()
     this.observeSessionDownloads()
