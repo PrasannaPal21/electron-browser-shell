@@ -523,23 +523,38 @@ export const injectExtensionAPIs = () => {
       extension: {
         factory: (base) => {
           const ipcGetViews = invokeExtension('extension.getViews')
+          const resolveViews = async (fetchProperties?: {
+            type?: string
+            windowId?: number
+            tabId?: number
+          }) => {
+            const views = (await ipcGetViews(fetchProperties)) || []
+            // Best-effort: if we're in a popup context and caller asks for popup views,
+            // expose the current window object to align with common extension checks.
+            if (fetchProperties?.type === 'popup') {
+              try {
+                const href = typeof location !== 'undefined' ? String(location.href || '') : ''
+                if (href.startsWith('chrome-extension://')) {
+                  return [window]
+                }
+              } catch {}
+            }
+            return views
+          }
           return {
             ...base,
             isAllowedFileSchemeAccess: invokeExtension('extension.isAllowedFileSchemeAccess'),
             isAllowedIncognitoAccess: invokeExtension('extension.isAllowedIncognitoAccess'),
-            getViews: async (fetchProperties?: { type?: string; windowId?: number; tabId?: number }) => {
-              const views = (await ipcGetViews(fetchProperties)) || []
-              // Best-effort: if we're in a popup context and caller asks for popup views,
-              // expose the current window object to align with common extension checks.
-              if (fetchProperties?.type === 'popup') {
-                try {
-                  const href = typeof location !== 'undefined' ? String(location.href || '') : ''
-                  if (href.startsWith('chrome-extension://')) {
-                    return [window]
-                  }
-                } catch {}
+            getViews: (...args: any[]) => {
+              const callback = typeof args[args.length - 1] === 'function' ? args.pop() : undefined
+              const fetchProperties =
+                args.length > 0 && args[0] && typeof args[0] === 'object' ? args[0] : undefined
+              const result = resolveViews(fetchProperties)
+              if (callback) {
+                result.then(callback).catch(() => callback([]))
+                return
               }
-              return views
+              return result
             },
           }
         },
