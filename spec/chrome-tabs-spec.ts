@@ -279,6 +279,34 @@ describe('chrome.tabs', () => {
     })
   })
 
+  describe('move() and highlight()', () => {
+    it('moves a tab to the requested index', async () => {
+      const created = await browser.crx.exec('tabs.create', { url: `${server.getUrl()}moved` })
+      const moved = await browser.crx.exec('tabs.move', created.id, { index: 0 })
+      expect(moved).to.be.an('object')
+      expect((moved as any).id).to.equal(created.id)
+      expect((moved as any).index).to.equal(0)
+    })
+
+    it('highlights the requested index', async () => {
+      await browser.crx.exec('tabs.create', { url: `${server.getUrl()}highlight-a` })
+      await browser.crx.exec('tabs.create', { url: `${server.getUrl()}highlight-b` })
+      const highlightedWindow = await browser.crx.exec('tabs.highlight', {
+        windowId: browser.window.id,
+        tabs: 1,
+      })
+      expect(highlightedWindow).to.be.an('object')
+      expect((highlightedWindow as any).id).to.equal(browser.window.id)
+
+      const highlightedTabs = await browser.crx.exec('tabs.query', {
+        windowId: browser.window.id,
+        highlighted: true,
+      })
+      expect(highlightedTabs).to.be.an('array')
+      expect(highlightedTabs.length).to.be.greaterThan(0)
+    })
+  })
+
   describe('zoom methods', () => {
     it('supports zoom roundtrip', async () => {
       const tabId = browser.window.webContents.id

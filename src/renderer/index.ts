@@ -830,6 +830,8 @@ export const injectExtensionAPIs = () => {
             reload: invokeExtension('tabs.reload'),
             update: invokeExtension('tabs.update'),
             remove: invokeExtension('tabs.remove'),
+            move: invokeExtension('tabs.move'),
+            highlight: invokeExtension('tabs.highlight'),
             goBack: invokeExtension('tabs.goBack'),
             goForward: invokeExtension('tabs.goForward'),
             duplicate: invokeExtension('tabs.duplicate'),
@@ -843,6 +845,8 @@ export const injectExtensionAPIs = () => {
             onActivated: new ExtensionEvent('tabs.onActivated'),
             onReplaced: new ExtensionEvent('tabs.onReplaced'),
             onZoomChange: new ExtensionEvent('tabs.onZoomChange'),
+            onMoved: new ExtensionEvent('tabs.onMoved'),
+            onHighlighted: new ExtensionEvent('tabs.onHighlighted'),
           }
           return api
         },

@@ -29,6 +29,8 @@ export class TabsAPI {
   private tabZoomSettings = new Map<number, chrome.tabs.ZoomSettings>()
   private tabZoomFactors = new Map<number, number>()
   private originZoomFactors = new Map<string, number>()
+  private highlightedTabsByWindow = new Map<number, Set<number>>()
+  private tabOrderByWindow = new Map<number, number[]>()
 
   constructor(private ctx: ExtensionContext) {
     const handle = this.ctx.router.apiHandler()
@@ -41,6 +43,8 @@ export class TabsAPI {
     handle('tabs.reload', this.reload.bind(this))
     handle('tabs.update', this.update.bind(this))
     handle('tabs.remove', this.remove.bind(this))
+    handle('tabs.move', this.move.bind(this))
+    handle('tabs.highlight', this.highlight.bind(this))
     handle('tabs.goForward', this.goForward.bind(this))
     handle('tabs.goBack', this.goBack.bind(this))
     handle('tabs.duplicate', this.duplicate.bind(this))
@@ -55,10 +59,18 @@ export class TabsAPI {
 
   private getWindowTabs(win: Electron.BaseWindow | undefined) {
     if (!win || win.isDestroyed()) return []
-    return Array.from(this.ctx.store.tabs).filter((tab) => {
+    const tabs = Array.from(this.ctx.store.tabs).filter((tab) => {
       if (tab.isDestroyed()) return false
       const tabWindow = this.ctx.store.tabToWindow.get(tab)
       return !!tabWindow && !tabWindow.isDestroyed() && tabWindow.id === win.id
+    })
+    const order = this.tabOrderByWindow.get(win.id)
+    if (!order?.length) return tabs
+    const orderMap = new Map(order.map((id, idx) => [id, idx]))
+    return tabs.sort((a, b) => {
+      const ai = orderMap.has(a.id) ? (orderMap.get(a.id) as number) : Number.MAX_SAFE_INTEGER
+      const bi = orderMap.has(b.id) ? (orderMap.get(b.id) as number) : Number.MAX_SAFE_INTEGER
+      return ai - bi
     })
   }
 
@@ -103,6 +115,16 @@ export class TabsAPI {
     return this.getWindowTabs(win).findIndex((candidate) => candidate.id === tab.id)
   }
 
+  private moveTabOrder(winId: number, tabId: number, toIndex: number) {
+    const current = [...(this.tabOrderByWindow.get(winId) || [])]
+    const from = current.indexOf(tabId)
+    if (from < 0) return
+    const [removed] = current.splice(from, 1)
+    const clamped = Math.max(0, Math.min(toIndex, current.length))
+    current.splice(clamped, 0, removed)
+    this.tabOrderByWindow.set(winId, current)
+  }
+
   private refreshWindowTabIndexes(win: Electron.BaseWindow | undefined) {
     if (!win || win.isDestroyed()) return
     const tabs = this.getWindowTabs(win)
@@ -116,6 +138,14 @@ export class TabsAPI {
 
   private observeTab(tab: TabContents) {
     const tabId = tab.id
+    const win = this.ctx.store.tabToWindow.get(tab)
+    if (win && !win.isDestroyed()) {
+      const order = this.tabOrderByWindow.get(win.id) || []
+      if (!order.includes(tabId)) {
+        order.push(tabId)
+        this.tabOrderByWindow.set(win.id, order)
+      }
+    }
 
     const updateEvents = [
       'page-title-updated', // title
@@ -183,7 +213,7 @@ export class TabsAPI {
       favIconUrl: tab.favicon || undefined,
       frozen: false,
       height,
-      highlighted: false,
+      highlighted: win ? this.highlightedTabsByWindow.get(win.id)?.has(tabId) ?? false : false,
       id: tabId,
       incognito: false,
       index: this.resolveTabIndex(tab, win),
@@ -427,6 +457,118 @@ export class TabsAPI {
       if (tab) this.ctx.store.removeTab(tab)
       this.onRemoved(tabId)
     })
+  }
+
+  private async move(
+    event: ExtensionEvent,
+    tabIds: number | number[],
+    moveProperties: chrome.tabs.MoveProperties,
+  ) {
+    const ids = Array.isArray(tabIds) ? tabIds : [tabIds]
+    if (!ids.length) return []
+    if (!moveProperties || typeof moveProperties.index !== 'number' || moveProperties.index < 0) {
+      throw new Error('tabs.move requires a non-negative destination index')
+    }
+
+    const tabs = ids
+      .map((tabId) => this.ctx.store.getTabById(tabId))
+      .filter((tab): tab is TabContents => !!tab && !tab.isDestroyed())
+    if (!tabs.length) return Array.isArray(tabIds) ? [] : undefined
+
+    const first = tabs[0]
+    const sourceWindow = this.ctx.store.tabToWindow.get(first)
+    if (!sourceWindow || sourceWindow.isDestroyed()) {
+      throw new Error('Unable to resolve source window for tabs.move')
+    }
+
+    const destinationWindow =
+      typeof moveProperties.windowId === 'number' && moveProperties.windowId > -1
+        ? this.ctx.store.getWindowById(moveProperties.windowId)
+        : sourceWindow
+    if (!destinationWindow || destinationWindow.isDestroyed()) {
+      throw new Error('Unable to resolve destination window for tabs.move')
+    }
+    if (destinationWindow.id !== sourceWindow.id) {
+      throw new Error('tabs.move across windows is not currently supported')
+    }
+
+    const moved: chrome.tabs.Tab[] = []
+    const currentWindowTabs = this.getWindowTabs(sourceWindow)
+
+    for (let i = 0; i < tabs.length; i++) {
+      const tab = tabs[i]
+      const fromIndex = this.resolveTabIndex(tab, sourceWindow)
+      if (fromIndex < 0) continue
+      const destinationIndex = Math.max(0, Math.min(moveProperties.index + i, currentWindowTabs.length - 1))
+
+      if (typeof this.ctx.store.impl.moveTab === 'function') {
+        const implToIndex = await this.ctx.store.impl.moveTab(tab, sourceWindow, destinationIndex)
+        this.moveTabOrder(
+          sourceWindow.id,
+          tab.id,
+          typeof implToIndex === 'number' && implToIndex >= 0 ? implToIndex : destinationIndex,
+        )
+      } else {
+        this.moveTabOrder(sourceWindow.id, tab.id, destinationIndex)
+      }
+
+      this.refreshWindowTabIndexes(sourceWindow)
+      const details = this.createTabDetails(tab)
+      const toIndex = this.resolveTabIndex(tab, sourceWindow)
+
+      this.ctx.router.broadcastEvent('tabs.onMoved', tab.id, {
+        windowId: sourceWindow.id,
+        fromIndex,
+        toIndex,
+      } satisfies chrome.tabs.TabMoveInfo)
+
+      moved.push(details)
+    }
+
+    return Array.isArray(tabIds) ? moved : moved[0]
+  }
+
+  private async highlight(event: ExtensionEvent, highlightInfo: chrome.tabs.HighlightInfo) {
+    const targetWindow =
+      typeof highlightInfo?.windowId === 'number' && highlightInfo.windowId > -1
+        ? this.ctx.store.getWindowById(highlightInfo.windowId)
+        : this.resolveCurrentWindow(event)
+    if (!targetWindow || targetWindow.isDestroyed()) return
+
+    const windowTabs = this.getWindowTabs(targetWindow)
+    const indexes = Array.isArray(highlightInfo.tabs) ? highlightInfo.tabs : [highlightInfo.tabs]
+    const selectedTabs = indexes
+      .map((idx) => windowTabs[idx])
+      .filter((tab): tab is TabContents => !!tab && !tab.isDestroyed())
+    if (!selectedTabs.length) return
+
+    const requestedIds = selectedTabs.map((tab) => tab.id)
+    const activeTabId = requestedIds[0]
+    const actualIds =
+      typeof this.ctx.store.impl.highlightTabs === 'function'
+        ? (await this.ctx.store.impl.highlightTabs(targetWindow, requestedIds, activeTabId)) || requestedIds
+        : requestedIds
+
+    this.highlightedTabsByWindow.set(targetWindow.id, new Set(actualIds))
+    this.ctx.store.tabDetailsCache.forEach((tabInfo) => {
+      if (tabInfo.windowId === targetWindow.id) {
+        tabInfo.highlighted = actualIds.includes(tabInfo.id!)
+      }
+    })
+
+    if (typeof activeTabId === 'number') {
+      this.onActivated(activeTabId)
+    }
+
+    this.ctx.router.broadcastEvent('tabs.onHighlighted', {
+      windowId: targetWindow.id,
+      tabIds: actualIds,
+    } satisfies chrome.tabs.TabHighlightInfo)
+
+    return {
+      id: targetWindow.id,
+      focused: targetWindow.isFocused(),
+    } as chrome.windows.Window
   }
 
   private goForward(event: ExtensionEvent, arg1?: unknown) {
@@ -715,6 +857,21 @@ export class TabsAPI {
       isWindowClosing: win ? win.isDestroyed() : false,
     })
 
+    if (typeof windowId === 'number' && windowId > -1) {
+      const order = this.tabOrderByWindow.get(windowId)
+      if (order) {
+        this.tabOrderByWindow.set(
+          windowId,
+          order.filter((id) => id !== tabId),
+        )
+      }
+      const highlighted = this.highlightedTabsByWindow.get(windowId)
+      if (highlighted) {
+        highlighted.delete(tabId)
+        if (highlighted.size === 0) this.highlightedTabsByWindow.delete(windowId)
+      }
+    }
+
     this.refreshWindowTabIndexes(win || undefined)
   }
 
@@ -730,9 +887,16 @@ export class TabsAPI {
 
     this.ctx.store.setActiveTab(tab)
 
+    if (win && !win.isDestroyed()) {
+      this.highlightedTabsByWindow.set(win.id, new Set([tabId]))
+    }
+
     // invalidate cache since 'active' has changed
     this.ctx.store.tabDetailsCache.forEach((tabInfo, cacheTabId) => {
       tabInfo.active = tabId === cacheTabId
+      if (win && !win.isDestroyed() && tabInfo.windowId === win.id) {
+        tabInfo.highlighted = tabId === cacheTabId
+      }
     })
 
     this.ctx.router.broadcastEvent('tabs.onActivated', {
