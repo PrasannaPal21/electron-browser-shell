@@ -293,7 +293,11 @@ export class DownloadsAPI {
   }
 
   private unsupported = (method: string) => {
-    return async () => {
+    return async (..._args: unknown[]) => {
+      // Probe-style API: Chrome often surfaces "no icon" as null rather than failing the call.
+      if (method === 'downloads.getFileIcon') {
+        return null
+      }
       throw new Error(`${method} is not supported yet`)
     }
   }
