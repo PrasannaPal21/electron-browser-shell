@@ -11,6 +11,9 @@ type AlarmMap = Map<string, PersistedAlarm>
 
 const ALARMS_STATE_NS = 'alarms'
 
+/** `setTimeout` delay is a signed 32-bit value in browsers and Node; larger values overflow. */
+const MAX_SET_TIMEOUT_MS = 2147483647
+
 export class AlarmsAPI {
   private alarmsByExtension = new Map<string, AlarmMap>()
   private timers = new Map<string, NodeJS.Timeout>()
@@ -92,11 +95,19 @@ export class AlarmsAPI {
       this.timers.delete(timerKey)
     }
 
-    const delay = Math.max(0, alarm.scheduledTime - Date.now())
-    const timer = setTimeout(() => {
-      this.fireAlarm(extensionId, alarm.name)
-    }, delay)
-    this.timers.set(timerKey, timer)
+    const fireAt = alarm.scheduledTime
+    const tick = () => {
+      const remaining = fireAt - Date.now()
+      if (remaining <= 0) {
+        this.timers.delete(timerKey)
+        this.fireAlarm(extensionId, alarm.name)
+        return
+      }
+      const chunk = Math.min(remaining, MAX_SET_TIMEOUT_MS)
+      const timer = setTimeout(tick, chunk)
+      this.timers.set(timerKey, timer)
+    }
+    tick()
   }
 
   private fireAlarm(extensionId: string, alarmName: string) {
