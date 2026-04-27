@@ -66,7 +66,8 @@ export class RuntimeAPI extends EventEmitter {
           id: wc.id,
           type,
           windowId: bw?.id,
-          tabId: wc.id,
+          // tabId is only meaningful for page views; popups/background are not a tab in Chrome.
+          ...(type === 'tab' ? { tabId: wc.id } : {}),
           url: rawUrl,
         }
       })
