@@ -41,6 +41,9 @@ export class ScriptingAPI {
     handle('scripting.unregisterContentScripts', this.unregisterContentScripts.bind(this), {
       permission: 'scripting',
     })
+    handle('scripting.updateContentScripts', this.updateContentScripts.bind(this), {
+      permission: 'scripting',
+    })
 
     this.loadPersistedRegistry()
     this.ctx.store.on('tab-added', (tab: TabContents) => this.observeTab(tab))
@@ -171,6 +174,24 @@ export class ScriptingAPI {
     }
   }
 
+  private validateUpdateScript(script: chrome.scripting.RegisteredContentScript) {
+    if (!script || typeof script !== 'object' || !script.id || typeof script.id !== 'string') {
+      throw new Error('updateContentScripts: script.id is required')
+    }
+    if (
+      typeof script.matches === 'undefined' &&
+      typeof script.excludeMatches === 'undefined' &&
+      typeof script.js === 'undefined' &&
+      typeof script.css === 'undefined' &&
+      typeof script.runAt === 'undefined' &&
+      typeof script.world === 'undefined' &&
+      typeof script.persistAcrossSessions === 'undefined' &&
+      typeof script.matchOriginAsFallback === 'undefined'
+    ) {
+      throw new Error(`updateContentScripts: script "${script.id}" has no mutable fields`)
+    }
+  }
+
   private async registerContentScripts(
     event: ExtensionEvent,
     scripts: chrome.scripting.RegisteredContentScript[],
@@ -220,7 +241,37 @@ export class ScriptingAPI {
     }
     const ids = new Set(filter.ids)
     const next = all.filter((script) => !ids.has(script.id))
-    this.registryByExtension.set(extensionId, next)
+    if (next.length > 0) this.registryByExtension.set(extensionId, next)
+    else this.registryByExtension.delete(extensionId)
+    this.persistRegistry()
+  }
+
+  private async updateContentScripts(
+    event: ExtensionEvent,
+    scripts: chrome.scripting.RegisteredContentScript[],
+  ): Promise<void> {
+    if (!Array.isArray(scripts) || scripts.length === 0) return
+    const extensionId = event.extension.id
+    const current = this.registryByExtension.get(extensionId) || []
+    const byId = new Map(current.map((script) => [script.id, script]))
+
+    scripts.forEach((update) => {
+      this.validateUpdateScript(update)
+      const existing = byId.get(update.id)
+      if (!existing) {
+        throw new Error(`updateContentScripts: unknown script id "${update.id}"`)
+      }
+
+      const merged: chrome.scripting.RegisteredContentScript = {
+        ...existing,
+        ...this.cloneScripts([update])[0],
+        id: existing.id,
+      }
+      this.validateRegisteredScript(merged)
+      byId.set(merged.id, merged)
+    })
+
+    this.registryByExtension.set(extensionId, Array.from(byId.values()))
     this.persistRegistry()
   }
 

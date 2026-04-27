@@ -3,7 +3,7 @@ import { app, BrowserWindow } from 'electron'
 import { emittedOnce } from './events-helpers'
 
 import { useExtensionBrowser, useServer } from './hooks'
-import { ChromeExtensionImpl } from '../dist/types/browser/impl'
+import type { ChromeExtensionImpl } from '../src/browser/impl'
 
 describe('chrome.tabs', () => {
   let assignTabDetails: ChromeExtensionImpl['assignTabDetails']

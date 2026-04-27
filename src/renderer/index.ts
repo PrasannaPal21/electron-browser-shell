@@ -656,7 +656,9 @@ export const injectExtensionAPIs = () => {
       },
 
       scripting: {
-        shouldInject: () => manifest.manifest_version === 3,
+        shouldInject: () =>
+          manifest.manifest_version === 3 ||
+          !!(manifest.permissions as string[] | undefined)?.includes('scripting'),
         factory: (base) => {
           const ipcExecuteScript = invokeExtension('scripting.executeScript')
           return {
@@ -671,6 +673,7 @@ export const injectExtensionAPIs = () => {
             registerContentScripts: invokeExtension('scripting.registerContentScripts'),
             getRegisteredContentScripts: invokeExtension('scripting.getRegisteredContentScripts'),
             unregisterContentScripts: invokeExtension('scripting.unregisterContentScripts'),
+            updateContentScripts: invokeExtension('scripting.updateContentScripts'),
           }
         },
       },
