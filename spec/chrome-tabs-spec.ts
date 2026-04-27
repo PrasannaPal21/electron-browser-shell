@@ -288,6 +288,18 @@ describe('chrome.tabs', () => {
       expect((moved as any).index).to.equal(0)
     })
 
+    it('accepts index -1 to move a tab to the end of the window', async () => {
+      await browser.crx.exec('tabs.create', { url: `${server.getUrl()}move-end-a` })
+      const toMove = await browser.crx.exec('tabs.create', { url: `${server.getUrl()}move-end-b` })
+      const moved = await browser.crx.exec('tabs.move', toMove.id, { index: -1 })
+      expect(moved).to.be.an('object')
+      expect((moved as any).id).to.equal(toMove.id)
+      const all = await browser.crx.exec('tabs.query', { windowId: browser.window.id })
+      expect(all).to.be.an('array')
+      const idx = (all as any[]).findIndex((t: any) => t.id === toMove.id)
+      expect(idx).to.equal((all as any[]).length - 1)
+    })
+
     it('highlights the requested index', async () => {
       await browser.crx.exec('tabs.create', { url: `${server.getUrl()}highlight-a` })
       await browser.crx.exec('tabs.create', { url: `${server.getUrl()}highlight-b` })

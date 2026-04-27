@@ -466,8 +466,13 @@ export class TabsAPI {
   ) {
     const ids = Array.isArray(tabIds) ? tabIds : [tabIds]
     if (!ids.length) return []
-    if (!moveProperties || typeof moveProperties.index !== 'number' || moveProperties.index < 0) {
-      throw new Error('tabs.move requires a non-negative destination index')
+    if (!moveProperties || typeof moveProperties.index !== 'number') {
+      throw new Error('tabs.move requires a destination index')
+    }
+    const rawIndex = moveProperties.index
+    // Chrome: index -1 moves tab(s) to the end of the window; only -1 is valid among negatives.
+    if (rawIndex < -1) {
+      throw new Error('tabs.move index must be >= -1')
     }
 
     const tabs = ids
@@ -494,12 +499,16 @@ export class TabsAPI {
 
     const moved: chrome.tabs.Tab[] = []
     const currentWindowTabs = this.getWindowTabs(sourceWindow)
+    const len = currentWindowTabs.length
+    const n = tabs.length
+    const startIndex =
+      rawIndex === -1 ? Math.max(0, len - n) : rawIndex
 
     for (let i = 0; i < tabs.length; i++) {
       const tab = tabs[i]
       const fromIndex = this.resolveTabIndex(tab, sourceWindow)
       if (fromIndex < 0) continue
-      const destinationIndex = Math.max(0, Math.min(moveProperties.index + i, currentWindowTabs.length - 1))
+      const destinationIndex = Math.max(0, Math.min(startIndex + i, len - 1))
 
       if (typeof this.ctx.store.impl.moveTab === 'function') {
         const implToIndex = await this.ctx.store.impl.moveTab(tab, sourceWindow, destinationIndex)
