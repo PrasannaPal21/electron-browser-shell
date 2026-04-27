@@ -27,6 +27,7 @@ export class ScriptingAPI {
   private registryByExtension = new Map<string, chrome.scripting.RegisteredContentScript[]>()
   private observedTabs = new Set<number>()
   private injectedByTab = new Map<number, Set<string>>()
+  private registryReady: Promise<void>
 
   constructor(private ctx: ExtensionContext) {
     const handle = this.ctx.router.apiHandler()
@@ -45,7 +46,7 @@ export class ScriptingAPI {
       permission: 'scripting',
     })
 
-    this.loadPersistedRegistry()
+    this.registryReady = this.loadPersistedRegistry()
     this.ctx.store.on('tab-added', (tab: TabContents) => this.observeTab(tab))
   }
 
@@ -53,7 +54,8 @@ export class ScriptingAPI {
     return JSON.parse(JSON.stringify(list)) as chrome.scripting.RegisteredContentScript[]
   }
 
-  private loadPersistedRegistry() {
+  private async loadPersistedRegistry() {
+    await this.ctx.stateStore.whenHydrated()
     const initial = this.ctx.stateStore.getNamespace<Record<string, chrome.scripting.RegisteredContentScript[]>>(
       DYNAMIC_REGISTRY_NS,
       {},
@@ -110,6 +112,7 @@ export class ScriptingAPI {
   }
 
   private async injectDynamicScripts(tab: TabContents, runAt: RunAt) {
+    await this.registryReady
     if (!tab || tab.isDestroyed()) return
     const url = tab.getURL()
     if (!url || typeof url !== 'string') return
@@ -196,6 +199,7 @@ export class ScriptingAPI {
     event: ExtensionEvent,
     scripts: chrome.scripting.RegisteredContentScript[],
   ) {
+    await this.registryReady
     if (!Array.isArray(scripts) || scripts.length === 0) return
     const extensionId = event.extension.id
     const current = this.registryByExtension.get(extensionId) || []
@@ -218,6 +222,7 @@ export class ScriptingAPI {
     event: ExtensionEvent,
     filter?: { ids?: string[] },
   ): Promise<chrome.scripting.RegisteredContentScript[]> {
+    await this.registryReady
     const extensionId = event.extension.id
     const all = this.registryByExtension.get(extensionId) || []
     const ids = filter?.ids
@@ -232,6 +237,7 @@ export class ScriptingAPI {
     event: ExtensionEvent,
     filter?: { ids?: string[] },
   ): Promise<void> {
+    await this.registryReady
     const extensionId = event.extension.id
     const all = this.registryByExtension.get(extensionId) || []
     if (!filter || !Array.isArray(filter.ids) || filter.ids.length === 0) {
@@ -250,6 +256,7 @@ export class ScriptingAPI {
     event: ExtensionEvent,
     scripts: chrome.scripting.RegisteredContentScript[],
   ): Promise<void> {
+    await this.registryReady
     if (!Array.isArray(scripts) || scripts.length === 0) return
     const extensionId = event.extension.id
     const current = this.registryByExtension.get(extensionId) || []

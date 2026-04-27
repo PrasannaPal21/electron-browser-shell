@@ -21,6 +21,7 @@ export class ExtensionStateStore {
   private state: StatePayload = { schemaVersion: STATE_SCHEMA_VERSION, namespaces: {} }
   private dirty = false
   private hydrated = false
+  private hydratePromise?: Promise<void>
 
   constructor(private session: Electron.Session, opts: StateStoreOptions = {}) {
     const baseDir = opts.baseDir || path.join(app.getPath('userData'), 'chrome-extension-api-state')
@@ -30,6 +31,14 @@ export class ExtensionStateStore {
   }
 
   async hydrate() {
+    if (this.hydratePromise) {
+      return this.hydratePromise
+    }
+    this.hydratePromise = this.doHydrate()
+    return this.hydratePromise
+  }
+
+  private async doHydrate() {
     if (this.hydrated) return
     this.hydrated = true
 
@@ -57,6 +66,10 @@ export class ExtensionStateStore {
 
     this.state = { schemaVersion: STATE_SCHEMA_VERSION, namespaces: {} }
     this.dirty = true
+  }
+
+  async whenHydrated() {
+    await this.hydrate()
   }
 
   getNamespace<T>(name: string, fallback: T): T {
